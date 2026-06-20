@@ -281,21 +281,21 @@ export class SwitchBotHAPPlatform {
               if (getterSetter && typeof getterSetter.set === 'function') {
                 service.getCharacteristic(Characteristic).onSet(async (value: any) => {
                   await getterSetter.set(value)
-                  if (s.type === 'WindowCovering') {
-                    for (const [refreshCharName, refreshRaw] of Object.entries(s.characteristics || {})) {
-                      const refreshGetterSetter: any = refreshRaw
-                      if (!refreshGetterSetter || typeof refreshGetterSetter.get !== 'function') {
-                        continue
-                      }
-                      const RefreshCharacteristic = (hap.Characteristic as any)[refreshCharName]
-                      if (!RefreshCharacteristic) {
-                        continue
-                      }
-                      try {
-                        service.getCharacteristic(RefreshCharacteristic).updateValue(await refreshGetterSetter.get())
-                      } catch (e) {
-                        this.log.debug?.(`Failed to refresh ${refreshCharName} after WindowCovering set`, e)
-                      }
+
+                  const refreshAfterSet = Array.isArray(getterSetter.refreshAfterSet) ? getterSetter.refreshAfterSet : []
+                  for (const refreshCharName of refreshAfterSet) {
+                    const refreshGetterSetter: any = (s.characteristics || {})[refreshCharName]
+                    if (!refreshGetterSetter || typeof refreshGetterSetter.get !== 'function') {
+                      continue
+                    }
+                    const RefreshCharacteristic = (hap.Characteristic as any)[refreshCharName]
+                    if (!RefreshCharacteristic) {
+                      continue
+                    }
+                    try {
+                      service.getCharacteristic(RefreshCharacteristic).updateValue(await refreshGetterSetter.get())
+                    } catch (e) {
+                      this.log.debug?.(`Failed to refresh ${refreshCharName} after setting ${charName}`, e)
                     }
                   }
                 })

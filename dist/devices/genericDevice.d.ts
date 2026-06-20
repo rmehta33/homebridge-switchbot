@@ -87,6 +87,7 @@ export declare class CurtainDevice extends GenericDevice {
                 TargetPosition: {
                     get: () => Promise<number>;
                     set: (v: any) => Promise<void>;
+                    refreshAfterSet: string[];
                 };
             };
         }[];

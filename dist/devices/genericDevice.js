@@ -515,6 +515,7 @@ export class CurtainDevice extends GenericDevice {
                                 this.preferLocalPositionUntil = Date.now() + 30000;
                                 this.positionState = 2;
                             },
+                            refreshAfterSet: ['CurrentPosition', 'TargetPosition', 'PositionState'],
                         },
                     },
                 },
