@@ -46,6 +46,7 @@ export const CHAR_UUID_DEVICE = 'cba20d00-224d-11e6-9fb8-0002a5d5c51b';
 export const BLE_SCAN_TIMEOUT = 10000;
 export const BLE_CONNECT_TIMEOUT = 10000;
 export const BLE_COMMAND_TIMEOUT = 5000;
+export const BLE_DISCONNECT_TIMEOUT = 1000;
 export const READ_TIMEOUT_MSEC = 10000;
 export const WRITE_TIMEOUT_MSEC = 10000;
 /**

@@ -109,6 +109,8 @@ export declare class BLEConnection {
     private withMacLock;
     private clearDisconnectTimer;
     private scheduleDisconnect;
+    private invalidateConnection;
+    private writeCharacteristic;
     setPersistentConnectionTimeout(timeoutMs: number): void;
     setEncryption(mac: string, keyHex: string, ivHex: string, mode?: 'auto' | 'ctr' | 'gcm'): void;
     clearEncryption(mac: string): void;

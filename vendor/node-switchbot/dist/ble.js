@@ -6,7 +6,7 @@ import { Buffer } from 'node:buffer';
 import { createCipheriv } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { BLENotAvailableError, CommandFailedError, DeviceNotFoundError } from './errors.js';
-import { BLE_COMMAND_TIMEOUT, BLE_CONNECT_TIMEOUT, BLE_NOTIFY_CHARACTERISTIC_UUID, BLE_SCAN_TIMEOUT, BLE_SERVICE_UUID, BLE_WRITE_CHARACTERISTIC_UUID, DEVICE_MODEL_MAP } from './settings.js';
+import { BLE_COMMAND_TIMEOUT, BLE_CONNECT_TIMEOUT, BLE_DISCONNECT_TIMEOUT, BLE_NOTIFY_CHARACTERISTIC_UUID, BLE_SCAN_TIMEOUT, BLE_SERVICE_UUID, BLE_WRITE_CHARACTERISTIC_UUID, DEVICE_MODEL_MAP } from './settings.js';
 import { extractMacFromManufacturerData, Logger, macToDeviceId, mergeAdvertisement, normalizeMAC, withTimeout } from './utils/index.js';
 // Move RegExp to module scope to avoid re-compilation
 const CHARACTERISTIC_REGEX = /characteristic/i;
@@ -507,6 +507,53 @@ export class BLEConnection {
         }, this.persistentConnectionMs);
         this.disconnectTimers.set(mac, timer);
     }
+    async invalidateConnection(mac) {
+        const normalizedMac = normalizeMAC(mac);
+        const peripheral = this.connections.get(normalizedMac);
+        this.clearDisconnectTimer(normalizedMac);
+        this.connections.delete(normalizedMac);
+        this.characteristics.delete(normalizedMac);
+        this.notificationHandlers.delete(normalizedMac);
+        this.clearEncryption(normalizedMac);
+        if (!peripheral) {
+            return;
+        }
+        try {
+            await withTimeout(new Promise((resolve, reject) => {
+                try {
+                    peripheral.disconnect(() => resolve());
+                }
+                catch (error) {
+                    reject(error);
+                }
+            }), BLE_DISCONNECT_TIMEOUT, `Disconnect from ${mac} timed out`);
+        }
+        catch (error) {
+            this.logger.warn(`Failed to reset BLE connection for ${mac}`, error);
+        }
+    }
+    async writeCharacteristic(mac, characteristic, data) {
+        let active = true;
+        try {
+            await withTimeout(new Promise((resolve, reject) => {
+                characteristic.write(data, false, (error) => {
+                    if (!active) {
+                        return;
+                    }
+                    if (error) {
+                        reject(error);
+                    }
+                    else {
+                        this.scheduleDisconnect(mac);
+                        resolve();
+                    }
+                });
+            }), BLE_COMMAND_TIMEOUT, 'Write operation timed out');
+        }
+        finally {
+            active = false;
+        }
+    }
     setPersistentConnectionTimeout(timeoutMs) {
         this.persistentConnectionMs = Math.max(1000, timeoutMs);
     }
@@ -833,43 +880,29 @@ export class BLEConnection {
         }
         this.logger.debug(`Writing to ${mac}:`, data.toString('hex'));
         try {
-            await withTimeout(new Promise((resolve, reject) => {
-                (chars.write).write(data, false, (error) => {
-                    if (error) {
-                        reject(error);
-                    }
-                    else {
-                        this.scheduleDisconnect(normalizedMac);
-                        resolve();
-                    }
-                });
-            }), BLE_COMMAND_TIMEOUT, 'Write operation timed out');
+            await this.writeCharacteristic(normalizedMac, chars.write, data);
         }
         catch (err) {
             // If error is characteristic-related, clear cache and retry once
             if (CHARACTERISTIC_REGEX.test(err?.message || '')) {
-                this.characteristics.delete(normalizedMac);
-                await this.discoverCharacteristics(normalizedMac, this.connections.get(normalizedMac));
-                chars = this.characteristics.get(normalizedMac);
-                if (!chars) {
-                    throw err;
+                try {
+                    this.characteristics.delete(normalizedMac);
+                    await this.discoverCharacteristics(normalizedMac, this.connections.get(normalizedMac));
+                    chars = this.characteristics.get(normalizedMac);
+                    if (!chars) {
+                        throw err;
+                    }
+                    // Retry once
+                    await this.writeCharacteristic(normalizedMac, chars.write, data);
+                    return;
                 }
-                // Retry once
-                await withTimeout(new Promise((resolve, reject) => {
-                    (chars.write).write(data, false, (error) => {
-                        if (error) {
-                            reject(error);
-                        }
-                        else {
-                            this.scheduleDisconnect(normalizedMac);
-                            resolve();
-                        }
-                    });
-                }), BLE_COMMAND_TIMEOUT, 'Write operation timed out');
+                catch (retryError) {
+                    await this.invalidateConnection(normalizedMac);
+                    throw retryError;
+                }
             }
-            else {
-                throw err;
-            }
+            await this.invalidateConnection(normalizedMac);
+            throw err;
         }
     }
     /**
