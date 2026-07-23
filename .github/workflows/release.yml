@@ -71,7 +71,7 @@ jobs:
 
   # 3️⃣ Publish beta to NPM (OIDC — id-token required here and in the reusable workflow)
   beta-publish:
-    if: startsWith(github.ref_name, 'beta')
+    if: startsWith(github.ref_name, 'beta') && github.repository == 'OpenWonderLabs/homebridge-switchbot'
     needs: lint
     permissions:
       id-token: write
@@ -99,7 +99,7 @@ jobs:
 
   # 3️⃣ Determine release type, ESM status, and branch name
   determine-release-type:
-    if: github.ref_name == 'latest'
+    if: github.ref_name == 'latest' && github.repository == 'OpenWonderLabs/homebridge-switchbot'
     needs: lint
     uses: homebridge/.github/.github/workflows/determine-release-type.yml@latest
     with:
